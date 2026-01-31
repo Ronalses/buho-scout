@@ -56,48 +56,108 @@ export class PlaywrightScraper implements IScraper {
     }
 
     private async addToCart(page: Page): Promise<void> {
-        // Basic heuristics for "Add to Cart"
-        // Ideally we would look for a product page if home is a collection, but let's assume we land on a product or find one.
+        console.log("[Playwright] Checking if we are on Homepage...");
 
-        // Strategy: If homepage, try to click first product.
-        if (page.url().endsWith(".com/") || page.url().endsWith(".cl/")) {
-            console.log("[Playwright] On homepage, trying to find a product...");
-            const productSelector = "a[href*='/products/']";
-            const productLink = await page.$(productSelector);
-            if (productLink) {
-                await productLink.click();
+        // 1. Find a Product URL on Homepage (Extraction Strategy)
+        if (page.url().endsWith(".com/") || page.url().endsWith(".cl/") || page.url().endsWith("/")) {
+            console.log("[Playwright] Scanning homepage for product links...");
+
+            // Look for links containing /products/ but filter out non-product links if possible.
+            // We get all matching elements and check them.
+            const productHandles = await page.$$("a[href*='/products/']");
+            let targetUrl = "";
+
+            for (const handle of productHandles) {
+                const href = await handle.getAttribute("href");
+                const isVisible = await handle.isVisible();
+
+                // Simple heuristic: Must be visible and not be an empty link or just '#'
+                if (href && isVisible && href.length > 10) {
+                    targetUrl = href;
+                    // Ensure it's a full URL if relative
+                    if (!targetUrl.startsWith("http")) {
+                        const baseUrl = new URL(page.url()).origin;
+                        targetUrl = new URL(targetUrl, baseUrl).toString();
+                    }
+                    console.log(`[Playwright] Found candidate product URL: ${targetUrl}`);
+                    break; // Take the first valid one
+                }
+            }
+
+            if (targetUrl) {
+                console.log(`[Playwright] Navigating directly to product: ${targetUrl}`);
+                await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
+            } else {
+                console.warn("[Playwright] No product link found on homepage. Fallback to /collections/all");
+                await page.goto(page.url() + "collections/all");
                 await page.waitForLoadState("domcontentloaded");
+
+                // Try to find a product in collection
+                const firstProd = await page.$("a[href*='/products/']");
+                if (firstProd) {
+                    const href = await firstProd.getAttribute("href");
+                    if (href) {
+                        // Full URL check
+                        const finalUrl = href.startsWith("http") ? href : new URL(href, new URL(page.url()).origin).toString();
+                        console.log(`[Playwright] Navigating to collection product: ${finalUrl}`);
+                        await page.goto(finalUrl, { waitUntil: "domcontentloaded" });
+                    }
+                }
             }
         }
 
-        // Now on product page (hopefully)
+        console.log(`[Playwright] Current Product Page: ${page.url()}`);
+
+        // 2. Click "Add to Cart"
         const addToCartSelectors = [
+            "form[action*='/cart/add'] [type='submit']", // Best generic selector
             "button[name='add']",
-            "button[type='submit']:has-text('Add to cart')",
+            "button[id*='AddToCart']", // Classic Shopify
+            "#AddToCart",
             "button[type='submit']:has-text('Agregar')",
-            "form[action*='/cart/add'] button[type='submit']"
+            "button[type='submit']:has-text('Add to cart')"
         ];
 
+        let added = false;
+        // Try selectors
         for (const selector of addToCartSelectors) {
+            // We use $ to check presence without waiting too long, or isVisible
             if (await page.isVisible(selector)) {
                 console.log(`[Playwright] Found add to cart button: ${selector}`);
-                await page.click(selector);
-                // Wait for cart notification or drawer. Some themes use AJAX.
-                // Force navigation to cart if needed or just wait a bit.
-                await page.waitForTimeout(2000);
-                return;
+                try {
+                    await page.click(selector);
+                    added = true;
+                    await page.waitForTimeout(4000); // Wait for AJAX/Sidecart
+                    break;
+                } catch (e) {
+                    console.log(`[Playwright] Failed to click ${selector}: ${e}`);
+                }
             }
         }
 
-        // Fallback: direct post (advanced, skip for now)
-        console.warn("[Playwright] Could not find Add to Cart button.");
+        if (!added) {
+            // Debug: check if maybe there is a variant selector blocking?
+            // For now, let's just log and throw.
+            console.error("[Playwright] Failed to find any Add to Cart button.");
+            // Take screenshot? handled in parent catch.
+            throw new Error("Add to Cart failed");
+        }
     }
 
     private async proceedToCheckout(page: Page): Promise<void> {
-        // Try navigating directly to checkout
-        console.log("[Playwright] Navigating to /checkout");
-        await page.goto(page.url().split("/products")[0] + "/checkout");
-        await page.waitForLoadState("networkidle");
+        console.log("[Playwright] Force-navigating to /checkout");
+        const urlObj = new URL(page.url());
+        const checkoutUrl = `${urlObj.origin}/checkout`;
+
+        await page.goto(checkoutUrl);
+        // Wait for a checkout specific element to confirm generic success
+        // This wait is crucial.
+        try {
+            await page.waitForLoadState("domcontentloaded");
+            // If queues or captchas exist, this might timeout.
+        } catch (e) {
+            console.warn("Navigation to checkout timed out or stalled, but proceeding to extraction check.");
+        }
     }
 
     private async extractRatesForLocation(page: Page, location: string): Promise<{ service: string, price: number }[]> {

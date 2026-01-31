@@ -1,0 +1,29 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Store {
+  id        String   @id @default(uuid())
+  url       String   @unique
+  status    String   @default("pending") // pending, processed, error
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  rates     ShippingRate[]
+}
+
+model ShippingRate {
+  id          String   @id @default(uuid())
+  storeId     String
+  store       Store    @relation(fields: [storeId], references: [id])
+  comuna      String   // Santiago, Til Til, Buin
+  serviceName String
+  price       Float
+  currency    String   @default("CLP")
+  extractedAt DateTime @default(now())
+}
