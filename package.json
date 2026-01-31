@@ -1,0 +1,28 @@
+{
+  "name": "buho-scout",
+  "version": "1.0.0",
+  "description": "��#\u0000 \u0000b\u0000u\u0000h\u0000o\u0000-\u0000s\u0000c\u0000o\u0000u\u0000t\u0000\r\u0000 \u0000",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ronalses/buho-scout.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Ronalses/buho-scout/issues"
+  },
+  "homepage": "https://github.com/Ronalses/buho-scout#readme",
+  "devDependencies": {
+    "@types/node": "^25.1.0",
+    "playwright": "^1.58.1",
+    "prisma": "^7.3.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
