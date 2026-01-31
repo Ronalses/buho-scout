@@ -1,8 +1,8 @@
-# PRD Técnico: Shopify Shipping Rate Scraper v0.0.1
+# PRD Técnico: Shopify Shipping Rate Scraper v0.1.0
 
 > **Documento:** Product Requirements Document (Técnico)
 > **Fecha:** 2026-01-30
-> **Versión:** 0.0.1
+> **Versión:** 0.1.0 (Updated)
 > **Autor:** Senior Automation Engineer
 > **Estado:** Draft
 
@@ -12,16 +12,16 @@
 
 ### 1.1 Declaración de Visión
 
-Desarrollar un **sistema automatizado de extracción de tarifas de envío** robusto y escalable, diseñado específicamente para tiendas Shopify en el mercado chileno. El sistema debe simular el comportamiento de un usuario real para obtener datos precisos de costos logísticos en zonas geográficas clave, priorizando la estabilidad y la precisión de los datos sobre la velocidad bruta.
+Desarrollar un **sistema automatizado de extracción de tarifas de envío** robusto y escalable, diseñado específicamente para tiendas Shopify en el mercado chileno. El sistema debe simular el comportamiento de un usuario real para obtener datos precisos de costos logísticos en zonas geográficas clave.
 
-### 1.2 Principios de Diseño
+### 1.2 Metodología de Desarrollo
 
-| Principio | Descripción |
-|-----------|-------------|
-| **Resiliencia** | Capacidad de recuperación automática ante fallos de red o selectores cambiantes (Retries & Error Handling). |
-| **Precisión Geográfica** | Validación estricta de tarifas para comunas específicas (Santiago, Til Til, Buin). |
-| **Recursos Eficiente** | Gestión estricta de instancias de navegador para prevenir fugas de memoria. |
-| **Trazabilidad** | Registro detallado del estado de cada extracción (Pending, Processed, Error). |
+El proyecto seguirá un estricto modelo de desarrollo iterativo y validado:
+1.  **Planificación por Fase:** Antes de codificar, se debe crear un `implementation_plan.md` detallado.
+2.  **Validación Previa:** Se debe solicitar aprobación del usuario sobre el plan antes de comenzar la ejecución ('EXECUTION').
+3.  **Ejecución Fase a Fase:** Se avanza una fase a la vez. No se comienza la siguiente hasta terminar la actual.
+4.  **Verificación y Revisión:** Al finalizar cada fase, se debe "pedir revisión" al usuario y demostrar funcionalidad (manual o logs) antes de cerrar la fase.
+5.  **Lenguaje Obligatorio:** Todo el código fuente debe ser escrito exclusivamente en **TypeScript**. No se permite JavaScript plano.
 
 ### 1.3 Alcance del MVP
 
@@ -35,50 +35,44 @@ Desarrollar un **sistema automatizado de extracción de tarifas de envío** robu
 - Modo Headless configurable.
 
 **Excluido:**
-- Extracción de productos específicos (se selecciona el primero disponible o predeterminado).
-- Soporte para plataformas no-Shopify (WooCommerce, VTEX, etc.).
-- Bypassing de captchas complejos (ej. Cloudflare Turnstile en modo agresivo).
-- Ejecución distribuida/paralela en múltiples nodos.
+- **Pruebas Automatizadas (Unitarias/Integración):** No se implementarán tests automáticos en esta fase (Jest/Vitest excluidos). La validación será manual/logs.
+- Extracción de productos específicos (se selecciona el primero disponible).
+- Soporte para plataformas no-Shopify.
+- Bypassing de captchas complejos (ej. Cloudflare Turnstile agresivo).
 
 ---
 
 ## 2. Arquitectura del Sistema
 
-### 2.1 Diagrama de Flujo
+### 2.1 Patrón de Diseño: Clean Onion Architecture
+
+El sistema se estructurará siguiendo los principios de Clean Architecture (Onion), separando claramente las responsabilidades en capas concéntricas.
+
+*   **Dominio (Core):** Entidades (`Store`, `ShippingRate`) e Interfaces de Repositorios. Sin dependencias externas.
+*   **Aplicación:** Casos de Uso (`ScrapeStoreUseCase`, `ProcessShippingRates`). Orquestan la lógica de negocio.
+*   **Infraestructura:** Implementaciones concretas.
+    *   *Scraper Adapter:* Implementación de Playwright.
+    *   *Database Adapter:* Implementación de Prisma/SQLite.
+*   **Presentación / Entry Point:** CLI o script principal que inicia el proceso.
+
+### 2.2 Diagrama de Flujo
 
 ```mermaid
 graph TD
-    A[Inicio] --> B{¿Hay Tiendas Pendientes?}
-    B -- Sí --> C[Cargar URL Tienda]
-    B -- No --> Z[Fin del Proceso]
-    C --> D[Detectar Botón 'Add to Cart']
-    D --> E[Navegar a Checkout]
-    E --> F[Iterar Ubicaciones (3)]
-    F --> G[Llenar Formulario Dirección]
-    G --> H[Esperar Carga de Tarifas]
-    H --> I[Extraer Servicios y Precios]
-    I --> J[Persistir en DB]
-    J --> F
-    F -- Fin Ubicaciones --> K[Marcar Tienda Processed]
-    K --> B
-    C -- Error --> L[Retry / Marcar Error]
-    L --> B
+    A[Inicio CLI] --> B{¿Tiendas Pendientes?}
+    B -- Sí --> C(UseCase: ScrapeStore)
+    C --> D[Infra: Browser Adapter]
+    D --> E[Simular AddToCart y Checkout]
+    E --> F[Infra: Extraer Tarifas]
+    F --> G(UseCase: SaveRates)
+    G --> H[Infra: Prisma Adapter]
+    H --> B
+    B -- No --> Z[Fin]
 ```
-
-### 2.2 Stack Tecnológico
-
-| Componente | Tecnología | Justificación |
-|------------|------------|---------------|
-| **Runtime** | Node.js + TypeScript | Tipado estático y ecosistema maduro para automatización. |
-| **Browser Auto** | Playwright | Mejor manejo de estados asíncronos y shadow DOM que Puppeteer. |
-| **ORM** | Prisma | Abstracción de tipos segura y migraciones sencillas. |
-| **Database** | SQLite | Almacenamiento local ligero y sin configuración compleja. |
 
 ---
 
 ## 3. Modelo de Datos (Prisma)
-
-### 3.1 Esquema Propuesto
 
 ```prisma
 // schema.prisma
@@ -87,7 +81,7 @@ model Store {
   id        String   @id @default(uuid())
   url       String   @unique
   status    String   @default("pending") // pending, processed, error
-  lastError String?  // Para diagnóstico
+  lastError String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   rates     ShippingRate[]
@@ -98,7 +92,7 @@ model ShippingRate {
   storeId     String
   store       Store    @relation(fields: [storeId], references: [id])
   comuna      String   // Santiago, Til Til, Buin
-  serviceName String   // Ej: "Envío Express", "Starken"
+  serviceName String
   price       Float
   currency    String   @default("CLP")
   extractedAt DateTime @default(now())
@@ -107,96 +101,69 @@ model ShippingRate {
 
 ---
 
-## 4. Especificación Funcional
+## 4. Estructura del Proyecto
 
-### 4.1 Lógica de Navegación y Selectores
-
-La automatización debe ser agnóstica al tema de Shopify ("Theme Agnostic"). Se utilizarán estrategias de **selectores inteligentes**:
-
-1.  **Add to Cart:**
-    *   Buscar botones que contengan texto: "Agregar al carrito", "Add to cart", "Comprar".
-    *   Fallback: Buscar formularios con `/cart/add`.
-2.  **Checkout:**
-    *   Navegación directa a `/checkout` si no hay redirección automática.
-3.  **Formulario de Dirección:**
-    *   Uso de atributos `name` comunes en Shopify:
-        *   `name="address[address1]"`
-        *   `name="address[city]"`
-        *   `name="address[zip]"` (o equivalente para Chile si aplica)
-    *   Manejo de dropdowns de regiones/comunas específicos de integraciones chilenas (ej. selectores dinámicos).
-
-### 4.2 Casos de Prueba (Geolocalización)
-
-Para cada tienda, se deben ejecutar secuencialmente las siguientes configuraciones de envío:
-
-| Caso | Región | Comuna |
-|------|--------|--------|
-| **Caso A** | Región Metropolitana | Santiago |
-| **Caso B** | Región Metropolitana | Til Til |
-| **Caso C** | Región Metropolitana | Buin |
-
-**Validación:**
-- Se considera éxito si se extrae al menos una tarifa o si el sitio indica explícitamente "No hay envíos a esta zona".
-- Timeout de espera por tarifas: 15 segundos.
-
-### 4.3 Manejo de Errores y Retries
-
-- **Retries:** Configurar 3 intentos por tienda en caso de fallos de red o timeouts.
-- **Pop-ups:** Implementar un "Pop-up Killer" que detecte y cierre modales comunes (newsletters, cookies, promociones) que bloqueen la interacción.
-- **Limpieza:** Uso de `context.close()` y `browser.close()` en bloques `finally` para asegurar liberación de memoria.
-
----
-
-## 5. Configuración y Ejecución
-
-### 5.1 Variables de Entorno
-
-```env
-DATABASE_URL="file:./dev.db"
-HEADLESS_MODE=true # true/false para debugging
-MAX_RETRIES=3
-BROWSER_TIMEOUT=30000
-```
-
-### 5.2 Estructura del Proyecto Recomendada
+La estructura de carpetas reflejará la arquitectura Onion:
 
 ```
 src/
-├── config/             # Configuración de Playwright y Env
-├── core/
-│   ├── browser.ts      # Factory de instancias de navegador
-│   ├── navigator.ts    # Lógica de navegación (Add to Cart, Checkout)
-│   └── extractor.ts    # Lógica de parsing de tarifas
-├── db/
-│   └── prisma.ts       # Cliente Prisma
-├── scenarios/
-│   └── chile-shipping.ts # Definición de direcciones de prueba
-└── main.ts             # Punto de entrada y orquestación
+├── domain/                 # Capa de Dominio (Pura)
+│   ├── entities/           # Definiciones de Tipos/Clases (Store, Rate)
+│   └── repositories/       # Interfaces (IStoreRepository, IScraper)
+├── application/            # Capa de Aplicación
+│   └── use-cases/          # Lógica de Negocio (ScrapeStore, SaveRates)
+├── infrastructure/         # Capa de Infraestructura (Adaptadores)
+│   ├── scraper/            # Implementación Playwright (Browser, Navigator)
+│   ├── database/           # Implementación Prisma
+│   └── config/             # Variables de entrono, Configuración
+└── main.ts                 # Entry Point (Inyeccion de Dependencias)
 ```
 
 ---
 
-## 6. Plan de Implementación
+## 5. Especificación Funcional
 
-### Fase 1: Setup & Scaffolding
-- [ ] Inicializar proyecto Node.js + TypeScript.
-- [ ] Configurar Prisma con SQLite.
-- [ ] Configurar Playwright.
+### 5.1 Estrategia de Selectores (Infraestructura)
+La implementación de Playwright debe ser resiliente:
+- **Add to Cart:** Búsqueda por texto flexible ("Agregar", "Comprar", "Add") o selector de formulario `/cart/add`.
+- **Checkout:** Navegación forzada a `/checkout` si es necesario.
+- **Formularios:** Inyección de valores en inputs con `name="address[...]"` o selectores específicos de apps de envíos chilenas.
 
-### Fase 2: Core Automator
-- [ ] Implementar detección de botón de compra.
-- [ ] Implementar navegación al checkout.
-- [ ] Implementar llenado de formularios dinámico.
+### 5.2 Flujo de Validación (Casos de Prueba)
+Al ejecutar el scraper, se probarán secuencialmente:
+1.  **Caso A:** Santiago (RM)
+2.  **Caso B:** Til Til (RM)
+3.  **Caso C:** Buin (RM)
 
-### Fase 3: Data Extraction & Persistence
-- [ ] Implementar lógica de extracción de tarifas del DOM.
-- [ ] Integrar con Prisma para guardar `Store` y `ShippingRate`.
-
-### Fase 4: Robustez y Loop
-- [ ] Agregar loop sobre lista de URLs.
-- [ ] Implementar manejo de errores y reintentos.
-- [ ] Pruebas finales con tiendas reales.
+Se considera éxito si se extraen tarifas o el sitio indica explícitamente falta de cobertura.
 
 ---
 
-**Documento listo para implementación.**
+## 6. Plan de Implementación (Fases)
+
+### Fase 1: Setup & Domain Definition
+- Configuración de TypeScript y Prisma (SQLite).
+- Definición de Entidades de Dominio (`Store`, `Rate`).
+- Definición de Interfaces (`IScraper`, `IRepository`).
+- *Validación:* Compilación exitosa y generación de esquema DB.
+
+### Fase 2: Application Layer
+- Implementación de Casos de Uso (`ScrapeStoreUseCase`).
+- Lógica de orquestación (Loop de tiendas).
+- *Validación:* Tests manuales con "Mocks" de infraestructura (sin navegador real aún).
+
+### Fase 3: Infrastructure - Scraper (Playwright)
+- Implementación concreta de `IScraper` usando Playwright.
+- Lógica de detección de botón y checkout.
+- Llenado de formularios.
+- *Validación:* Ejecución visual (headed) verificando la navegación correcta.
+
+### Fase 4: Infrastructure - Database & Integration
+- Implementación de repositorios Prisma.
+- Inyección de dependencias en `main.ts`.
+- Ejecución completa del flujo.
+- *Validación:* Verificar datos persistidos en `dev.db`.
+
+---
+
+**Nota:** Cada fase requiere aprobación del plan antes de código y revisión al finalizar.
