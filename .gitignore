@@ -39,3 +39,5 @@ coverage/
 # Misc
 *.tgz
 .cache/
+
+shipping_rates.json

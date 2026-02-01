@@ -45,6 +45,8 @@ async function main() {
         });
     });
 
+    const scrapedResults: any[] = [];
+
     try {
         // 2. Navigate to URL
         console.log(`[1/6] Navigating to ${url}...`);
@@ -68,13 +70,32 @@ async function main() {
         for (const location of LOCATIONS) {
             console.log(`\n--- Processing Location: ${location} ---`);
             try {
-                await extractRatesForLocation(page, location);
+                const rates = await extractRatesForLocation(page, location);
+                scrapedResults.push({
+                    location: location,
+                    rates: rates || []
+                });
             } catch (error) {
                 console.error(`Failed to extract rates for ${location}:`, error);
+                scrapedResults.push({
+                    location: location,
+                    error: error instanceof Error ? error.message : String(error),
+                    rates: []
+                });
             }
         }
 
         console.log("\n[6/6] Process Completed.");
+
+        // Save Results to JSON
+        const output = {
+            store: url,
+            timestamp: new Date().toISOString(),
+            results: scrapedResults
+        };
+
+        fs.writeFileSync('shipping_rates.json', JSON.stringify(output, null, 2));
+        console.log("Results saved to shipping_rates.json");
 
     } catch (error) {
         console.error("Critical Error:", error);
@@ -356,6 +377,8 @@ async function extractRatesForLocation(page: Page, location: string) {
 
     console.log(`Found ${cleanedRates.length} rates for ${location}:`);
     console.table(cleanedRates);
+
+    return cleanedRates;
 }
 
 async function fillField(page: Page, robustName: string, idSelector: string, value: string) {
