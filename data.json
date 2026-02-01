@@ -1,0 +1,100 @@
+{
+  "stores": {
+    "a662acee-c789-4bc9-af2b-9d18256cdf2e": {
+      "id": "a662acee-c789-4bc9-af2b-9d18256cdf2e",
+      "url": "https://www.fenixdeportes.cl/",
+      "status": "processed",
+      "lastError": null,
+      "createdAt": "2026-01-31T03:21:53.850Z",
+      "updatedAt": "2026-01-31T03:22:05.890Z"
+    },
+    "3b87487d-e30c-4c61-b7cb-8a6ec93e6410": {
+      "id": "3b87487d-e30c-4c61-b7cb-8a6ec93e6410",
+      "url": "https://www.fenixdeportes.cl/",
+      "status": "processed",
+      "lastError": null,
+      "createdAt": "2026-01-31T03:29:30.569Z",
+      "updatedAt": "2026-01-31T03:31:05.531Z"
+    },
+    "76efc51d-aa78-4758-b23c-1eaeef9e4c69": {
+      "id": "76efc51d-aa78-4758-b23c-1eaeef9e4c69",
+      "url": "https://www.fenixdeportes.cl/",
+      "status": "processed",
+      "lastError": null,
+      "createdAt": "2026-01-31T03:31:31.333Z",
+      "updatedAt": "2026-01-31T03:32:41.228Z"
+    },
+    "b5b5d55f-bfdb-46b0-998f-2ac9f500c70e": {
+      "id": "b5b5d55f-bfdb-46b0-998f-2ac9f500c70e",
+      "url": "https://www.fenixdeportes.cl/",
+      "status": "processed",
+      "lastError": null,
+      "createdAt": "2026-01-31T03:33:27.503Z",
+      "updatedAt": "2026-01-31T03:34:48.182Z"
+    },
+    "6ded1a94-f516-4911-817a-a95dd0dcd004": {
+      "id": "6ded1a94-f516-4911-817a-a95dd0dcd004",
+      "url": "https://www.fenixdeportes.cl/",
+      "status": "processed",
+      "lastError": null,
+      "createdAt": "2026-01-31T03:41:53.238Z",
+      "updatedAt": "2026-01-31T03:43:06.194Z"
+    }
+  },
+  "rates": [
+    {
+      "id": "c17b9ac9-0a46-4275-97d5-a64f7357d5ae",
+      "storeId": "a662acee-c789-4bc9-af2b-9d18256cdf2e",
+      "comuna": "Santiago",
+      "serviceName": "Starken Normal",
+      "price": 4500,
+      "currency": "CLP",
+      "extractedAt": "2026-01-31T03:22:05.841Z"
+    },
+    {
+      "id": "d96e0f60-b7b0-4845-b9e6-db126cb9c0c2",
+      "storeId": "a662acee-c789-4bc9-af2b-9d18256cdf2e",
+      "comuna": "Santiago",
+      "serviceName": "Chilexpress Day",
+      "price": 6000,
+      "currency": "CLP",
+      "extractedAt": "2026-01-31T03:22:05.841Z"
+    },
+    {
+      "id": "c8c742d7-386d-4eef-bc47-d200d6bf0b22",
+      "storeId": "a662acee-c789-4bc9-af2b-9d18256cdf2e",
+      "comuna": "Til Til",
+      "serviceName": "Starken Normal",
+      "price": 4500,
+      "currency": "CLP",
+      "extractedAt": "2026-01-31T03:22:05.841Z"
+    },
+    {
+      "id": "69d0764c-3092-4c87-b76c-804239faec6e",
+      "storeId": "a662acee-c789-4bc9-af2b-9d18256cdf2e",
+      "comuna": "Til Til",
+      "serviceName": "Chilexpress Day",
+      "price": 6000,
+      "currency": "CLP",
+      "extractedAt": "2026-01-31T03:22:05.841Z"
+    },
+    {
+      "id": "26c759fd-d689-40f5-abf5-c5e02b4ece21",
+      "storeId": "a662acee-c789-4bc9-af2b-9d18256cdf2e",
+      "comuna": "Buin",
+      "serviceName": "Starken Normal",
+      "price": 4500,
+      "currency": "CLP",
+      "extractedAt": "2026-01-31T03:22:05.841Z"
+    },
+    {
+      "id": "dc519156-3c7c-459f-9fa8-e770b55e35d4",
+      "storeId": "a662acee-c789-4bc9-af2b-9d18256cdf2e",
+      "comuna": "Buin",
+      "serviceName": "Chilexpress Day",
+      "price": 6000,
+      "currency": "CLP",
+      "extractedAt": "2026-01-31T03:22:05.841Z"
+    }
+  ]
+}

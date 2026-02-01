@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/Ronalses/buho-scout#readme",
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.1.0",
     "playwright": "^1.58.1",
     "prisma": "^7.3.0",
@@ -26,6 +27,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@prisma/client": "^7.3.0"
+    "@prisma/client": "^7.3.0",
+    "better-sqlite3": "^12.6.2"
   }
 }

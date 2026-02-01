@@ -39,6 +39,3 @@ coverage/
 # Misc
 *.tgz
 .cache/
-
-whatsapp-sessions-test/
-whatsapp-sessions/
