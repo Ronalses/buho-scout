@@ -1,4 +1,5 @@
 import { chromium, Page } from 'playwright';
+import * as fs from 'fs';
 
 // Configuration
 const LOCATIONS = ["Santiago", "Til Til", "Buin"];
@@ -7,7 +8,8 @@ const DUMMY_USER = {
     firstName: "Scraper",
     lastName: "Bot",
     address: "Calle Falsa 123",
-    zip: "9999999"
+    zip: "9999999",
+    phone: "999999999"
 };
 
 async function main() {
@@ -20,9 +22,28 @@ async function main() {
 
     console.log(`Starting scraper for: ${url}`);
 
-    const browser = await chromium.launch({ headless: false }); // Headless false to see execution
-    const context = await browser.newContext();
+    const browser = await chromium.launch({
+        headless: false,
+        args: [
+            '--disable-blink-features=AutomationControlled',
+            '--no-sandbox',
+            '--disable-setuid-sandbox'
+        ]
+    });
+    const context = await browser.newContext({
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        viewport: { width: 1366, height: 768 },
+        locale: 'es-CL',
+        timezoneId: 'America/Santiago'
+    });
     const page = await context.newPage();
+
+    // Stealth: Hide webdriver property
+    await page.addInitScript(() => {
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined,
+        });
+    });
 
     try {
         // 2. Navigate to URL
@@ -134,11 +155,51 @@ async function proceedToCheckout(page: Page) {
     console.log(`Force navigating to: ${checkoutUrl}`);
     await page.goto(checkoutUrl, { waitUntil: 'domcontentloaded' });
 
-    // Wait for a key checkout element to confirm we are there
+    // Wait for a key checkout element to confirm we are there AND loaded
     try {
-        await page.waitForLoadState('networkidle', { timeout: 10000 });
+        console.log("Waiting for checkout form to load...");
+        // Relaxed selector: Wait for ANY text input or the specific address ID
+        // Also try waiting for the "Teléfono" label since we know it exists
+        await Promise.race([
+            page.waitForSelector('#checkout_shipping_address_address1', { timeout: 60000 }),
+            page.waitForSelector('input[name*="address1"]', { timeout: 60000 }),
+            page.getByLabel('Dirección').first().waitFor({ timeout: 60000 })
+        ]);
+        console.log("Checkout form loaded.");
     } catch (e) {
-        // ignore timeout, proceed
+        console.log("Timeout waiting for form selector.");
+    }
+
+    // 5. Fill Checkout Form
+    console.log("Filling checkout form...");
+    await fillField(page, 'email', '#checkout_email', DUMMY_USER.email); // Use DUMMY_USER.email
+    await fillField(page, 'lastName', '#checkout_shipping_address_last_name', DUMMY_USER.lastName); // Use DUMMY_USER.lastName
+    await fillField(page, 'address1', '#checkout_shipping_address_address1', DUMMY_USER.address); // Use DUMMY_USER.address
+
+    // Fill Phone - Critical Fix with Robust Selectors
+    console.log("Filling Phone field...");
+    const phoneSelectors = [
+        'input[type="tel"]',
+        'input[name*="phone"]',
+        '#checkout_shipping_address_phone',
+        '[autocomplete="tel"]'
+    ];
+    let phoneFilled = false;
+    for (const selector of phoneSelectors) {
+        if (await page.locator(selector).count() > 0) {
+            console.log(`Found phone field with selector: ${selector}`);
+            await page.fill(selector, DUMMY_USER.phone);
+            phoneFilled = true;
+            break;
+        }
+    }
+    if (!phoneFilled) {
+        console.log("Could not find phone field with standard selectors. Trying approximate label...");
+        try {
+            await page.getByLabel('Teléfono').fill(DUMMY_USER.phone);
+        } catch (e) {
+            console.log("Failed to fill phone field.");
+        }
     }
 }
 
@@ -181,9 +242,17 @@ async function extractRatesForLocation(page: Page, location: string) {
     await fillField(page, "address1", "#checkout_shipping_address_address1", DUMMY_USER.address);
     await fillField(page, "postalCode", "#checkout_shipping_address_zip", DUMMY_USER.zip);
 
-    // Fill City / Region (The tricky part)
-    // Logic: Enter City -> Wait -> Select Region if dropdown exists
+    // Fill Phone (ensure it's filled in the loop too with robust selector)
+    const phoneSelectors = ['input[type="tel"]', 'input[name*="phone"]', '#checkout_shipping_address_phone', '[autocomplete="tel"]'];
+    for (const s of phoneSelectors) {
+        if (await page.locator(s).count() > 0) {
+            await page.fill(s, DUMMY_USER.phone);
+            break;
+        }
+    }
 
+    // Fill City / Region (The tricky part)
+    // ... (unchanged) ...
     // City
     const citySelector = `input[name="checkout[shipping_address][city]"], input[name="city"], #checkout_shipping_address_city`;
     if (await page.isVisible(citySelector)) {
@@ -193,7 +262,6 @@ async function extractRatesForLocation(page: Page, location: string) {
     }
 
     // Zone/Region/Province
-    // Auto-select "Región Metropolitana" for our test cases if possible
     let region = "";
     if (["Santiago", "Til Til", "Buin"].some(l => location.toLowerCase().includes(l.toLowerCase()))) {
         region = "Región Metropolitana";
@@ -205,7 +273,6 @@ async function extractRatesForLocation(page: Page, location: string) {
             try {
                 await page.selectOption(provinceSelector, { label: region });
             } catch (e) {
-                // Sometimes it's "Santiago" instead of "Región Metropolitana" depending on the store
                 try {
                     await page.selectOption(provinceSelector, { label: "Santiago" });
                 } catch (e2) { }
@@ -213,39 +280,87 @@ async function extractRatesForLocation(page: Page, location: string) {
         }
     }
 
-    // 3. Go to Shipping Step (Wait for rates)
-    console.log("Submitting address...");
-    const continueBtn = "#continue_button";
-    await page.click(continueBtn);
+    // 3. Wait for Rates to Load (Dynamic update or Next Step)
+    console.log("Waiting for shipping rates to appear (dynamic update)...");
+    // The user indicated that rates appear after filling the commune.
+    // Use the specific ID provided in the HTML snippet.
+    const shippingMethodsSelector = "fieldset#shipping_methods";
 
     // 4. Wait for Rates to Load
+    console.log("Waiting for shipping rates (looking for 'Métodos de envío')...");
+
     try {
-        await page.waitForSelector(".section--shipping-method", { timeout: 15000 });
-        console.log("Shipping section loaded.");
+        // Wait for the section header that the user confirmed exists
+        await page.getByText("Métodos de envío").waitFor({ timeout: 15000 });
+        console.log("Shipping section found!");
+
+        // Wait a bit more for the specific options to render
+        await page.waitForTimeout(2000);
+
     } catch (e) {
-        console.error("Timeout waiting for shipping methods. Address might be invalid or no rates.");
-        return;
+        console.log("Timeout waiting for 'Métodos de envío'. This might be expected for some locations (e.g., Til Til).");
+        // Determine if it's an error or just no rates
+        const bodyText = await page.innerText('body');
+        if (bodyText.includes("No hay opciones de envío") || bodyText.includes("No shipping")) {
+            console.log("Confirmed: No shipping options available.");
+            return; // Empty rates
+        }
     }
 
-    // 5. Extract Rates
-    const rates = await page.$$eval(".content-box__row .radio-wrapper, .section--shipping-method .radio-wrapper", rows => {
-        return rows.map(row => {
-            const nameEl = row.querySelector(".radio__label__primary");
-            const priceEl = row.querySelector(".radio__label__accessory .content-box__emphasis");
-            return {
-                service: nameEl ? (nameEl as HTMLElement).innerText.trim() : "",
-                price: priceEl ? (priceEl as HTMLElement).innerText.trim() : ""
-            };
-        }).filter(r => r.service);
-    });
+    // 5. Extract Rates using exact HTML structure provided by user
+    // HTML Structure:
+    // <input type="radio" id="ID" name="shipping_methods">
+    // <label for="ID"> <p>NAME</p> </label>
+    // <div id="ID-secondary"> <strong>PRICE</strong> </div>
 
-    console.log(`Found ${rates.length} rates for ${location}:`);
-    console.table(rates);
+    console.log("Extracting rates with precise selectors...");
+    const rates = [];
+
+    // Find all shipping method radios
+    const radios = await page.locator('input[name="shipping_methods"]').all();
+
+    if (radios.length === 0) {
+        console.log(`No shipping rates found for ${location} (Radios count: 0).`);
+        // Check for error messages
+        const errorMsg = await page.locator('.field__message--error, .notice--error').allInnerTexts();
+        if (errorMsg.length > 0) console.log("Errors found:", errorMsg);
+    }
+
+    for (const radio of radios) {
+        const radioId = await radio.getAttribute('id');
+        if (!radioId) continue;
+
+        // Extract Name: Label matching the ID
+        let serviceName = "Unknown Service";
+        // Selector: label[for="ID"]
+        // The user HTML has a <p> inside the label, but innerText on label should catch it.
+        const labelLocator = page.locator(`label[for="${radioId}"]`);
+        if (await labelLocator.count() > 0) {
+            serviceName = (await labelLocator.innerText()).replace(/\n/g, ' ').trim();
+        }
+
+        // Extract Price: Container with ID = radioId + "-secondary"
+        let servicePrice = "Unknown Price";
+        const priceId = `${radioId}-secondary`;
+        const priceLocator = page.locator(`#${priceId}`);
+
+        if (await priceLocator.count() > 0) {
+            servicePrice = (await priceLocator.innerText()).replace(/\n/g, ' ').trim();
+        }
+
+        rates.push({ service: serviceName, price: servicePrice });
+    }
+
+    // Clean up rates
+    const cleanedRates = rates.filter(r => r.service !== "Unknown Service");
+
+    console.log(`Found ${cleanedRates.length} rates for ${location}:`);
+    console.table(cleanedRates);
 }
 
 async function fillField(page: Page, robustName: string, idSelector: string, value: string) {
     const nameSelector = `input[name="${robustName}"], input[name*="[${robustName}]"]`;
-    if (await page.count(nameSelector) > 0) {
+    if (await page.locator(nameSelector).count() > 0) {
         await page.fill(nameSelector, value);
     } else {
         await page.fill(idSelector, value).catch(() => { });
