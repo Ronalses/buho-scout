@@ -4,12 +4,12 @@ import * as fs from 'fs';
 // Configuration
 const LOCATIONS = ["Santiago", "Til Til", "Buin"];
 const DUMMY_USER = {
-    email: "test@buho.cl",
-    firstName: "Scraper",
-    lastName: "Bot",
-    address: "Calle Falsa 123",
-    zip: "9999999",
-    phone: "999999999"
+    email: "juan.perez@example.com",
+    firstName: "Juan",
+    lastName: "Perez",
+    address: "Av. Providencia 1234",
+    zip: "7500000",
+    phone: "991234567"
 };
 
 async function main() {
@@ -278,7 +278,9 @@ async function extractRatesForLocation(page: Page, location: string) {
     const citySelector = `input[name="checkout[shipping_address][city]"], input[name="city"], #checkout_shipping_address_city`;
     if (await page.isVisible(citySelector)) {
         await page.fill(citySelector, location);
-        await page.press(citySelector, "Enter");
+        // Avoid Enter as it might submit form in One Page Checkout
+        // await page.press(citySelector, "Enter"); 
+        await page.keyboard.press("Tab");
         await page.waitForTimeout(500);
     }
 
@@ -294,6 +296,7 @@ async function extractRatesForLocation(page: Page, location: string) {
             try {
                 await page.selectOption(provinceSelector, { label: region });
             } catch (e) {
+                // Try "Santiago" if "Región Metropolitana" fails
                 try {
                     await page.selectOption(provinceSelector, { label: "Santiago" });
                 } catch (e2) { }
@@ -301,80 +304,85 @@ async function extractRatesForLocation(page: Page, location: string) {
         }
     }
 
-    // 3. Wait for Rates to Load (Dynamic update or Next Step)
-    console.log("Waiting for shipping rates to appear (dynamic update)...");
-    // The user indicated that rates appear after filling the commune.
-    // Use the specific ID provided in the HTML snippet.
-    const shippingMethodsSelector = "fieldset#shipping_methods";
+    // 3. Trigger Rate Update (Blur fields instead of submitting)
+    console.log("Triggering rate update by blurring fields...");
+    await page.click("body");
+    await page.keyboard.press("Tab");
 
     // 4. Wait for Rates to Load
-    console.log("Waiting for shipping rates (looking for 'Métodos de envío')...");
+    console.log("Waiting for shipping rates to appear (dynamic update)...");
+    const shippingMethodsSelector = "fieldset#shipping_methods";
 
     try {
-        // Wait for the section header that the user confirmed exists
-        await page.getByText("Métodos de envío").waitFor({ timeout: 15000 });
-        console.log("Shipping section found!");
-
-        // Wait a bit more for the specific options to render
+        await page.waitForSelector(shippingMethodsSelector, { timeout: 15000 });
+        console.log("Shipping methods container found.");
         await page.waitForTimeout(2000);
-
     } catch (e) {
-        console.log("Timeout waiting for 'Métodos de envío'. This might be expected for some locations (e.g., Til Til).");
-        // Determine if it's an error or just no rates
-        const bodyText = await page.innerText('body');
-        if (bodyText.includes("No hay opciones de envío") || bodyText.includes("No shipping")) {
-            console.log("Confirmed: No shipping options available.");
-            return; // Empty rates
-        }
+        console.log("Shipping methods not auto-detected via blur.");
     }
 
-    // 5. Extract Rates using exact HTML structure provided by user
-    // HTML Structure:
-    // <input type="radio" id="ID" name="shipping_methods">
-    // <label for="ID"> <p>NAME</p> </label>
-    // <div id="ID-secondary"> <strong>PRICE</strong> </div>
-
+    // 5. Extract Rates
     console.log("Extracting rates with precise selectors...");
     const rates = [];
 
-    // Find all shipping method radios
+    // Debug: Dump HTML to see what's inside the fieldset
+    const fieldsetHtml = await page.locator(shippingMethodsSelector).innerHTML().catch(() => "Container not found");
+    if (fieldsetHtml.length < 500) { // If it's suspiciously small
+        console.log("Fieldset seems empty. Dumping page...");
+        await page.screenshot({ path: `debug_${location}.png`, fullPage: true });
+        fs.writeFileSync(`debug_${location}.html`, await page.content());
+    }
+
     const radios = await page.locator('input[name="shipping_methods"]').all();
 
-    if (radios.length === 0) {
-        console.log(`No shipping rates found for ${location} (Radios count: 0).`);
-        // Check for error messages
-        const errorMsg = await page.locator('.field__message--error, .notice--error').allInnerTexts();
-        if (errorMsg.length > 0) console.log("Errors found:", errorMsg);
-    }
+    if (radios.length > 0) {
+        for (const radio of radios) {
+            const radioId = await radio.getAttribute('id');
+            if (!radioId) continue;
 
-    for (const radio of radios) {
-        const radioId = await radio.getAttribute('id');
-        if (!radioId) continue;
+            let serviceName = "Unknown Service";
+            const labelLocator = page.locator(`label[for="${radioId}"]`);
+            if (await labelLocator.count() > 0) {
+                serviceName = (await labelLocator.innerText()).replace(/\n/g, ' ').trim();
+            }
 
-        // Extract Name: Label matching the ID
-        let serviceName = "Unknown Service";
-        // Selector: label[for="ID"]
-        // The user HTML has a <p> inside the label, but innerText on label should catch it.
-        const labelLocator = page.locator(`label[for="${radioId}"]`);
-        if (await labelLocator.count() > 0) {
-            serviceName = (await labelLocator.innerText()).replace(/\n/g, ' ').trim();
+            let servicePrice = "Unknown Price";
+            const priceId = `${radioId}-secondary`;
+            const priceLocator = page.locator(`#${priceId}`);
+            if (await priceLocator.count() > 0) {
+                servicePrice = (await priceLocator.innerText()).replace(/\n/g, ' ').trim();
+            }
+            rates.push({ service: serviceName, price: servicePrice });
+        }
+    } else {
+        // Fallback: Div-based structure (Sevven.cl style)
+        console.log("No radio buttons found. Trying fallback (div-based structure)...");
+        // Look for the Price container: <div id="...-secondary">
+        const priceContainers = await page.locator('[id^="shipping_methods"][id$="-secondary"]').all();
+
+        if (priceContainers.length === 0) {
+            console.log(`No rates found with fallback strategy either.`);
+            const errorMsg = await page.locator('.field__message--error, .notice--error').allInnerTexts();
+            if (errorMsg.length > 0) console.log("Errors found:", errorMsg);
         }
 
-        // Extract Price: Container with ID = radioId + "-secondary"
-        let servicePrice = "Unknown Price";
-        const priceId = `${radioId}-secondary`;
-        const priceLocator = page.locator(`#${priceId}`);
+        for (const priceContainer of priceContainers) {
+            const priceText = (await priceContainer.innerText()).replace(/\n/g, ' ').trim();
 
-        if (await priceLocator.count() > 0) {
-            servicePrice = (await priceLocator.innerText()).replace(/\n/g, ' ').trim();
+            // The Name is usually in the PREVIOUS sibling of the price container
+            // Structure: <div> <h3>Name</h3> </div> <div id="...-secondary">Price</div>
+            const sibling = priceContainer.locator('xpath=preceding-sibling::div[1]');
+            let nameText = "Unknown Service";
+
+            if (await sibling.count() > 0) {
+                nameText = (await sibling.innerText()).replace(/\n/g, ' ').trim();
+            }
+
+            rates.push({ service: nameText, price: priceText });
         }
-
-        rates.push({ service: serviceName, price: servicePrice });
     }
 
-    // Clean up rates
     const cleanedRates = rates.filter(r => r.service !== "Unknown Service");
-
     console.log(`Found ${cleanedRates.length} rates for ${location}:`);
     console.table(cleanedRates);
 
